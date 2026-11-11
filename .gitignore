@@ -1,0 +1,17 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Backup files
+*.bak
+*~
+
+# ROS 2 generated files
+build/
+install/
+log/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store

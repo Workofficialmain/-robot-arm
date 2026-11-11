@@ -1,0 +1,156 @@
+<?xml version="1.0"?>
+<robot name="robot_arm">
+
+  <link name="world"/>
+
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="robot_base"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="robot_base">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/base.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/base_leg_1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/base_leg_2.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/base_leg_3.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/base_leg_4.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/motor_base.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="joint_base_rotate" type="revolute">
+    <parent link="robot_base"/>
+    <child link="link_turntable"/>
+    <origin xyz="0 0 0.0125" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14" upper="3.14" effort="5.0" velocity="1.5"/>
+  </joint>
+
+  <link name="link_turntable">
+    <visual>
+      <origin xyz="0 0 -0.0125" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/arm_base.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 -0.0125" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/motor_shoulder_1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 -0.0125" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/motor_shoulder_2.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="joint_shoulder" type="revolute">
+    <parent link="link_turntable"/>
+    <child link="link_upper_arm"/>
+    <origin xyz="0 0 0.0395" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5.0" velocity="1.5"/>
+  </joint>
+
+  <link name="link_upper_arm">
+    <visual>
+      <origin xyz="0 0 -0.052" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/shoulder.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 -0.052" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/upper_arm.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 -0.052" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/elbow_a.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="0 0 -0.052" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/motor_elbow.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="joint_elbow" type="revolute">
+    <parent link="link_upper_arm"/>
+    <child link="link_forearm"/>
+    <origin xyz="0.03 0 0.2368" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5.0" velocity="1.5"/>
+  </joint>
+
+  <link name="link_forearm">
+    <visual>
+      <origin xyz="-0.03 0 -0.2888" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/elbow_b.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="-0.03 0 -0.2888" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/forearm.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="-0.03 0 -0.2888" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/motor_wrist.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+
+</robot>
