@@ -219,6 +219,27 @@
       </geometry>
     </visual>
 
+    <visual>
+      <origin xyz="-0.03 -0 -0.2888" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/leg_holder_elbow.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="-0.03 -0 -0.2888" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/leg_holder_wrist.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="-0.03 -0 -0.2888" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/screws_forearm.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
     <collision>
       <origin xyz="0.101 0 0.0052" rpy="0 0 0"/>
       <geometry><box size="0.14 0.016 0.016"/></geometry>

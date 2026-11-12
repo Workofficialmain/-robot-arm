@@ -151,6 +151,27 @@
         <mesh filename="package://robot_arm_description/meshes/motor_wrist.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
+
+    <visual>
+      <origin xyz="-0.03 0 -0.2888" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/leg_holder_elbow.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="-0.03 0 -0.2888" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/leg_holder_wrist.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <visual>
+      <origin xyz="-0.03 0 -0.2888" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://robot_arm_description/meshes/screws_forearm.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
   </link>
 
 </robot>

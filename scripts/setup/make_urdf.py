@@ -43,7 +43,7 @@ def joint(name, parent, child, origin, axis, lo, hi):
 base = ["base", "base_leg_1", "base_leg_2", "base_leg_3", "base_leg_4", "motor_base"]
 turn = ["arm_base", "motor_shoulder_1", "motor_shoulder_2"]
 upper = ["shoulder", "upper_arm", "elbow_a", "motor_elbow"]
-fore = ["elbow_b", "forearm", "motor_wrist"]
+fore = ["elbow_b", "forearm", "motor_wrist", "leg_holder_elbow", "leg_holder_wrist", "screws_forearm"]
 
 s = '<?xml version="1.0"?>\n<robot name="robot_arm">\n'
 s += '\n  <link name="world"/>\n'

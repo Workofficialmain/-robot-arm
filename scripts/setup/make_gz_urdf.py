@@ -64,7 +64,7 @@ s += link("link_turntable", 0.4, turn_boxes[0], turn_boxes, ["arm_base", "motor_
 s += joint("joint_shoulder", "link_turntable", "link_upper_arm", sub(SH, TURN), "0 1 0", -1.57, 1.57)
 s += link("link_upper_arm", 0.5, upper_boxes[0], upper_boxes, ["shoulder", "upper_arm", "elbow_a", "motor_elbow"], SH)
 s += joint("joint_elbow", "link_upper_arm", "link_forearm", sub(EL, SH), "0 1 0", -1.57, 1.57)
-s += link("link_forearm", 0.5, fore_boxes[1], fore_boxes, ["elbow_b", "forearm", "motor_wrist"], EL)
+s += link("link_forearm", 0.5, fore_boxes[1], fore_boxes, ["elbow_b", "forearm", "motor_wrist", "leg_holder_elbow", "leg_holder_wrist", "screws_forearm"], EL)
 s += ('\n  <joint name="tip_joint" type="fixed">\n    <parent link="link_forearm"/>\n    <child link="end_effector"/>\n'
       '    <origin xyz="%s" rpy="0 0 0"/>\n  </joint>\n') % m(sub(TIP, EL))
 s += ('\n  <link name="end_effector">\n    <inertial>\n      <mass value="0.001"/>\n'
