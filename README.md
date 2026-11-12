@@ -5,10 +5,11 @@
 - launch/   gazebo.launch.py
 - config/   controllers.yaml
 - meshes/   STL parts
-- scripts/circle/   circle_guide.py, circle_demo.py  (legacy/: first trajectory version)
-- scripts/square/   square_guide.py, square_demo.py
-- scripts/common/   clear_marks.py (removes all dots from Gazebo)
-- scripts/setup/    make_urdf.py, make_gz_urdf.py, move_joints.py, freecad/ pivot scripts
+- scripts/motion_planning/  circle_demo.py, square_demo.py
+- scripts/circle/   circle_guide.py, legacy/
+- scripts/square/   square_guide.py
+- scripts/common/   clear_marks.py
+- scripts/setup/    make_urdf.py, make_gz_urdf.py, move_joints.py, freecad/
 - run/      start_gazebo.sh, run_circle.sh, run_square.sh
 
 ## Run
