@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![GitHub](https://img.shields.io/badge/Repository-Workofficialmain%2F-robot--arm-181717?logo=github&logoColor=white)](https://github.com/Workofficialmain/-robot-arm)
 
-A complete end-to-end robotics project developing a **3-Degree-of-Freedom (3-DOF) articulated robotic arm**. The system covers the entire robotics lifecycle: from FreeCAD joint extraction and custom URDF physics modeling to analytical forward/inverse kinematics, Jacobian differential velocity mapping, damped least squares (DLS) singularity handling, quintic polynomial trajectory interpolation, dynamic safety validation, and closed-loop ROS 2 `FollowJointTrajectory` execution in Gazebo.
+A complete end-to-end robotics project developing a **3-Degree-of-Freedom (3-DOF) articulated robotic arm**. The system covers the entire robotics lifecycle: from FreeCAD joint extraction and custom URDF physics modeling to analytical forward/inverse kinematics, Jacobian differential velocity mapping, damped least squares (DLS) singularity handling, quintic polynomial trajectory interpolation, dynamic safety validation, and ROS 2 `FollowJointTrajectory` execution and joint-state-based TCP tracking-error measurement in Gazebo.
 
 ---
 
@@ -129,7 +129,7 @@ flowchart TD
   - Velocity limits ($\le 2.0\text{ rad/s}$)
   - Acceleration limits ($\le 4.0\text{ rad/s}^2$)
   If any sample exceeds limits, an automated time-scaling algorithm computes a slowdown factor $s \le 1.0$ and stretches the execution duration without altering the geometric path.
-* **Why we did it**: Guarantees that no trajectory sent to the controller can ever demand torque or speed beyond physical motor ratings.
+* **Why we did it**: Helps keep planned joint positions, velocities, and configured acceleration limits within software limits. The configured acceleration ceiling is a planning limit, not a verified actuator torque or hardware rating.
 * **What it gives us / Output**:
   - Fail-safe trajectory verification and automated retiming before execution.
 
@@ -151,9 +151,9 @@ flowchart TD
 
 ---
 
-### Step 12: Dry-Run Testing & Closed-Loop Tracking Error Analysis
-* **What we did**: Validated the entire pipeline through dry-run tests (all math and safety checks executed without moving the robot) followed by closed-loop Gazebo execution while sampling `/joint_states` to calculate Root Mean Square (RMS) Cartesian tracking errors.
-* **Why we did it**: Proves the mathematical correctness, software reliability, and physical accuracy of the motion planner.
+### Step 12: Dry-Run Testing & Tracking Error Measurement
+* **What we did**: Validated the entire pipeline through dry-run tests (all math and safety checks executed without moving the robot) followed by an explicitly authorized straight-line Gazebo simulation execution. The node sampled `/joint_states` and used forward kinematics to calculate Root Mean Square (RMS) Cartesian tracking errors. This measures tracking performance; it does not perform closed-loop Cartesian correction.
+* **Why we did it**: Provides numerical evidence of mathematical consistency, software validation, and tracking performance in simulation. It does not establish real-hardware accuracy.
 * **What it gives us / Output**:
   - Quantitative accuracy report (RMS tracking error: $0.1207\text{ mm}$, maximum error: $0.1878\text{ mm}$, final position error: $0.0115\text{ mm}$).
 
@@ -485,7 +485,7 @@ Every component underwent rigorous automated verification before executing on si
   - Safety checks: **All passed**. No command sent (dry-run mode).
   **Status**: **PASS**
 
-### 5.5 Closed-Loop Gazebo Simulation Execution
+### 5.5 Gazebo Simulation Execution & Tracking-Error Measurement
 * **Configuration**: Cartesian straight-line movement of $\Delta Y = 20\text{ mm}$ and return, executed through ROS 2 `FollowJointTrajectory`.
 * **Execution Metrics**:
   - Action Goal Accepted: Yes
@@ -498,44 +498,98 @@ Every component underwent rigorous automated verification before executing on si
 | **Maximum Peak Tracking Error** | $\mathbf{0.1878\text{ mm}}$ |
 | **Final Settled Position Error** | $\mathbf{0.0115\text{ mm}}$ |
 
-**Status**: **PASS** (Sub-millimeter tracking accuracy verified in Gazebo physics simulation).
+**Status**: **PASS** (Sub-millimeter tracking error measured in Gazebo physics simulation; no real-hardware test is claimed).
 
 ---
 
 ## 6. Repository Architecture & File Map (Tabular Guide)
 
-The table below maps every critical file and directory in this repository to its exact role in the project workflow:
+This section explains the important project folders and source files, their responsibilities, and how they connect to the motion-planning examples. Each file or folder name links to its location in this repository.
 
-| File / Folder Path | Workflow Stage | Key Classes / Functions / Nodes | Purpose & Role in the Project |
-|---|---|---|---|
-| [`urdf/robot_arm.urdf`](urdf/robot_arm.urdf) | Modeling & URDF | Links, joints, visual STL meshes | Base URDF used for visualization in RViz. |
-| [`urdf/robot_arm_gz.urdf`](urdf/robot_arm_gz.urdf) | Simulation & Physics | Inertial boxes, collision tags, `ros2_control` | Physics-enabled URDF for Gazebo simulation with mass and friction properties. |
-| [`config/controllers.yaml`](config/controllers.yaml) | ros2_control Setup | `joint_state_broadcaster`, `arm_controller` | Defines PID gains, 50 Hz update rate, and trajectory interfaces. |
-| [`launch/gazebo.launch.py`](launch/gazebo.launch.py) | Launch & Orchestration | `robot_state_publisher`, `spawn_entity.py`, `spawner` | Launches Gazebo, publishes robot state, spawns arm, and starts controllers in sequence. |
-| [`scripts/setup/make_urdf.py`](scripts/setup/make_urdf.py) | Setup Automation | `visuals()`, `joint()` | Generates `robot_arm.urdf` automatically from mesh definitions. |
-| [`scripts/setup/make_gz_urdf.py`](scripts/setup/make_gz_urdf.py) | Setup Automation | `link()`, `inertial()`, `collisions()` | Generates `robot_arm_gz.urdf` with complete collision boxes and inertias. |
-| [`scripts/setup/move_joints.py`](scripts/setup/move_joints.py) | Testing Utility | `Mover(Node)` | Direct joint publisher publishing to `/joint_states` for quick alignment. |
-| [`scripts/setup/freecad/`](scripts/setup/freecad/) | CAD Extraction | `shoulder_axes.py`, `elbow_wrist_axes.py`, `wrist_axes.py` | FreeCAD scripts that extract exact pivot locations from raw 3D CAD files. |
-| [`scripts/motion_planning/kinematics.py`](scripts/motion_planning/kinematics.py) | Core Kinematics | `forward_kinematics`, `inverse_kinematics`, `jacobian`, `inverse_jacobian`, `singularity_measure` | Analytical forward & inverse kinematics, Jacobian derivation, and DLS pseudoinverse. |
-| [`scripts/motion_planning/trajectories.py`](scripts/motion_planning/trajectories.py) | Trajectory Generation | `quintic_trajectory`, `apply_time_scaling` | 5th-order polynomial trajectory interpolation with zero-velocity endpoints. |
-| [`scripts/motion_planning/cartesian_planner.py`](scripts/motion_planning/cartesian_planner.py) | Motion Planning | `plan_cartesian_line`, `plan_cartesian_line_smooth_with_velocity` | Generates 50 Hz straight Cartesian paths with smooth velocity mapping. |
-| [`scripts/motion_planning/shape_planner.py`](scripts/motion_planning/shape_planner.py) | Shape Planning | `plan_cartesian_square`, `plan_cartesian_circle`, `_rounded_square_path` | Generates blended rounded squares and parametric circles in the XY plane. |
-| [`scripts/motion_planning/safety.py`](scripts/motion_planning/safety.py) | Safety Engine | `validate_trajectory`, `check_velocity_limits`, `make_trajectory_safe` | Enforces joint angle, velocity, and acceleration limits; calculates automatic time scaling. |
-| [`scripts/motion_planning/joint_mapping.py`](scripts/motion_planning/joint_mapping.py) | Hardware Mapping | `math_to_ros`, `ros_to_math`, `JOINT_NAMES` | Converts between mathematical kinematic vectors and ROS 2 controller naming. |
-| [`scripts/motion_planning/ros_trajectory.py`](scripts/motion_planning/ros_trajectory.py) | ROS 2 Integration | `build_joint_trajectory` | Converts trajectory waypoints into `trajectory_msgs/msg/JointTrajectory` with nanosecond stamps. |
-| [`scripts/motion_planning/trajectory_publisher.py`](scripts/motion_planning/trajectory_publisher.py) | Execution Node | `TrajectoryPublisher(Node)` | ROS 2 node that verifies live joint states, performs dry-run validation, executes action goals, and logs tracking error. |
-| [`scripts/motion_planning/square_demo.py`](scripts/motion_planning/square_demo.py) | Full Demo | `run()`, `spawn()`, `tip()` | Complete square tracing demonstration with real-time Gazebo marker trails. |
-| [`scripts/motion_planning/circle_demo.py`](scripts/motion_planning/circle_demo.py) | Full Demo | `run()`, `spawn()`, `tip()` | Complete circle tracing demonstration with real-time Gazebo marker trails. |
-| [`scripts/square/square_guide.py`](scripts/square/square_guide.py) | Gazebo Visualization | `square_guide` node | Spawns black cylindrical disc markers on the Gazebo ground to outline the target square. |
-| [`scripts/circle/circle_guide.py`](scripts/circle/circle_guide.py) | Gazebo Visualization | `circle_guide` node | Spawns black cylindrical disc markers on the Gazebo ground to outline the target circle. |
-| [`scripts/common/clear_marks.py`](scripts/common/clear_marks.py) | Gazebo Utility | `clear_marks` node | Queries Gazebo model list and deletes all active trail and guide markers. |
-| [`run/start_gazebo.sh`](run/start_gazebo.sh) | Runner Script | Bash launcher | Kills lingering processes, sources ROS 2 workspace, and launches Gazebo with controllers. |
-| [`run/run_square.sh`](run/run_square.sh) | Runner Script | Bash demo runner | Clears old markers, spawns ground guide, and launches the square motion demo. |
-| [`run/run_circle.sh`](run/run_circle.sh) | Runner Script | Bash demo runner | Clears old markers, spawns ground guide, and launches the circle motion demo. |
-| [`CMakeLists.txt`](CMakeLists.txt) | Build Configuration | `ament_cmake` | Installs URDFs, meshes, config files, launch scripts, and python modules. |
-| [`package.xml`](package.xml) | Package Metadata | Dependencies | Defines ROS 2 Humble dependencies (`controller_manager`, `gazebo_ros`, etc.). |
+### 6.1 Robot Model, Simulation and Configuration
 
----
+| File / Folder | What it does | Related files / examples |
+|---|---|---|
+| [`urdf/robot_arm.urdf`](urdf/robot_arm.urdf) | Describes the robot's links, joints, visual geometry and kinematic structure. Used as the visualization-oriented robot description. | [`meshes/`](meshes/), [`make_urdf.py`](scripts/setup/make_urdf.py) |
+| [`urdf/robot_arm_gz.urdf`](urdf/robot_arm_gz.urdf) | Gazebo-oriented robot description containing the simulation-related inertial, collision and control configuration. | [`gazebo.launch.py`](launch/gazebo.launch.py), [`controllers.yaml`](config/controllers.yaml) |
+| [`urdf/robot_arm.urdf.bak`](urdf/robot_arm.urdf.bak) | Backup copy of the visual URDF. It is not the primary URDF referenced by the normal run instructions. | [`robot_arm.urdf`](urdf/robot_arm.urdf) |
+| [`meshes/`](meshes/) | Contains the STL geometry assets used to visually represent the robot's base, legs, motors, shoulder, elbow, upper arm, forearm and related mechanical parts. | Both URDF files |
+| [`config/controllers.yaml`](config/controllers.yaml) | Defines the ROS 2 control configuration for the joint-state broadcaster and arm trajectory controller. | [`gazebo.launch.py`](launch/gazebo.launch.py), [`start_gazebo.sh`](run/start_gazebo.sh) |
+| [`launch/gazebo.launch.py`](launch/gazebo.launch.py) | Launches and coordinates the Gazebo robot simulation, robot state publishing, entity spawning and controller startup. | [`robot_arm_gz.urdf`](urdf/robot_arm_gz.urdf), [`controllers.yaml`](config/controllers.yaml) |
+
+### 6.2 Core Motion-Planning Modules
+
+These modules form the main planning and execution pipeline.
+
+| File | What it does | Related example / connection |
+|---|---|---|
+| [`kinematics.py`](scripts/motion_planning/kinematics.py) | Implements analytical forward kinematics (joint angles to TCP position), inverse kinematics (TCP position to joint angles), the Jacobian, inverse Jacobian and singularity calculations. | Used by the Cartesian and shape planners. |
+| [`joint_mapping.py`](scripts/motion_planning/joint_mapping.py) | Converts between the mathematical joint-vector convention and the ROS 2 controller joint names and ordering. | Connects planning output to ROS trajectory messages. |
+| [`trajectories.py`](scripts/motion_planning/trajectories.py) | Generates smooth quintic trajectory interpolation and provides trajectory time-scaling functionality. | Used when generating smooth motion profiles. |
+| [`cartesian_planner.py`](scripts/motion_planning/cartesian_planner.py) | Generates Cartesian straight-line paths and maps Cartesian motion into joint-space motion using the robot kinematics. | Straight-line trajectory example through [`trajectory_publisher.py`](scripts/motion_planning/trajectory_publisher.py). |
+| [`shape_planner.py`](scripts/motion_planning/shape_planner.py) | Generates Cartesian square and circle paths, including rounded-square path geometry. | Used by [`square_demo.py`](scripts/motion_planning/square_demo.py) and [`circle_demo.py`](scripts/motion_planning/circle_demo.py). |
+| [`safety.py`](scripts/motion_planning/safety.py) | Validates planned joint positions, velocities and configured acceleration limits, and calculates time scaling when required. These are software planning checks, not a physical torque model. | Used before trajectory execution. |
+| [`ros_trajectory.py`](scripts/motion_planning/ros_trajectory.py) | Converts planned joint waypoints and timing information into ROS 2 `JointTrajectory` messages. | Connects planning data to the ROS 2 controller interface. |
+| [`trajectory_publisher.py`](scripts/motion_planning/trajectory_publisher.py) | Provides the ROS 2 trajectory-publishing node. It supports dry-run validation and explicitly requested execution, and can sample `/joint_states` to measure TCP tracking error using forward kinematics. | Used for straight-line, square and circle trajectory-publisher workflows. |
+
+### 6.3 Motion-Planning Demonstrations
+
+| File | What it does | Related example |
+|---|---|---|
+| [`square_demo.py`](scripts/motion_planning/square_demo.py) | Runs the square demonstration using the motion-planning and Gazebo visualization components. | [`run_square.sh`](run/run_square.sh) |
+| [`circle_demo.py`](scripts/motion_planning/circle_demo.py) | Runs the circle demonstration using the motion-planning and Gazebo visualization components. | [`run_circle.sh`](run/run_circle.sh) |
+
+### 6.4 Gazebo Visualization and Marker Utilities
+
+These scripts create visual guides or traces in Gazebo. A guide marker is a visual reference, not a commanded robot trajectory.
+
+| File / Folder | What it does | Related example |
+|---|---|---|
+| [`scripts/square/square_guide.py`](scripts/square/square_guide.py) | Spawns small black disc markers on the Gazebo ground to show the outline of a square. | Used by [`run_square.sh`](run/run_square.sh). |
+| [`scripts/circle/circle_guide.py`](scripts/circle/circle_guide.py) | Spawns small black disc markers on the Gazebo ground to show a circular outline. | Used by [`run_circle.sh`](run/run_circle.sh). |
+| [`scripts/circle/legacy/circle_trace.py`](scripts/circle/legacy/circle_trace.py) | Contains an earlier, legacy circle-tracing implementation. It is separate from the newer modular shape-planning pipeline. | Historical circle-tracing implementation. |
+| [`scripts/circle/legacy/tip_trail.py`](scripts/circle/legacy/tip_trail.py) | Legacy visualization node that monitors the end-effector transform and spawns trail markers when the tip is near the configured drawing height. | Historical Gazebo tip-trail visualization. |
+| [`scripts/common/clear_marks.py`](scripts/common/clear_marks.py) | Finds project guide and trail marker models in Gazebo and requests their deletion. | Called by the square and circle runner scripts before creating new guides. |
+
+### 6.5 Setup and CAD Extraction Scripts
+
+| File / Folder | What it does | Related files |
+|---|---|---|
+| [`scripts/setup/freecad/shoulder_axes.py`](scripts/setup/freecad/shoulder_axes.py) | FreeCAD inspection script for extracting shoulder joint-axis geometry from the CAD model. | Robot CAD and URDF geometry |
+| [`scripts/setup/freecad/elbow_wrist_axes.py`](scripts/setup/freecad/elbow_wrist_axes.py) | FreeCAD inspection script for extracting elbow and wrist axis geometry. | Robot CAD and URDF geometry |
+| [`scripts/setup/freecad/wrist_axes.py`](scripts/setup/freecad/wrist_axes.py) | FreeCAD inspection script for extracting wrist-axis geometry. | Robot CAD and URDF geometry |
+| [`scripts/setup/make_urdf.py`](scripts/setup/make_urdf.py) | Generates the visualization-oriented `robot_arm.urdf` from the defined mesh and joint geometry. The current script contains a machine-specific workspace path. | [`robot_arm.urdf`](urdf/robot_arm.urdf), [`meshes/`](meshes/) |
+| [`scripts/setup/make_gz_urdf.py`](scripts/setup/make_gz_urdf.py) | Generates the Gazebo-oriented URDF, including visual geometry, collision geometry and inertial properties. The current script contains a machine-specific workspace path. | [`robot_arm_gz.urdf`](urdf/robot_arm_gz.urdf) |
+| [`scripts/setup/move_joints.py`](scripts/setup/move_joints.py) | Small test utility that publishes `JointState` messages using supplied joint positions. It is not the main trajectory-controller execution node. | ROS 2 joint-state testing |
+
+### 6.6 Runner Scripts and Package Files
+
+| File | What it does | Related example |
+|---|---|---|
+| [`run/start_gazebo.sh`](run/start_gazebo.sh) | Sources the Gazebo and ROS 2 environments and launches the project's Gazebo launch file. It also terminates selected existing processes before launching. | Starts the simulation used by the demonstrations. |
+| [`run/run_square.sh`](run/run_square.sh) | Runs the square demo. In its normal path it clears old markers, creates the square guide and starts the square demo; it also has a `--dry` path. | [`square_demo.py`](scripts/motion_planning/square_demo.py) |
+| [`run/run_circle.sh`](run/run_circle.sh) | Runs the circle demo. In its normal path it clears old markers, creates the circle guide and starts the circle demo; it also has a `--dry` path. | [`circle_demo.py`](scripts/motion_planning/circle_demo.py) |
+| [`CMakeLists.txt`](CMakeLists.txt) | Defines the `ament_cmake` package build and installation rules for the robot description assets and motion-planning Python files. | ROS 2 package build |
+| [`package.xml`](package.xml) | Declares the ROS 2 package metadata and its build, runtime and test dependencies. | ROS 2 package setup |
+| [`.gitignore`](.gitignore) | Lists files and generated artifacts Git should ignore. | Repository maintenance |
+
+### 6.7 How the Main Motion-Planning Files Work Together
+
+The following relationships show how the source files connect in the project's examples:
+
+**Straight-line planning and execution**
+
+`cartesian_planner.py` → `kinematics.py` → `joint_mapping.py` → `safety.py` → `trajectories.py` (where applicable) → `ros_trajectory.py` → `trajectory_publisher.py`
+
+**Square demonstration**
+
+`run_square.sh` → `clear_marks.py` → `square_guide.py` → `square_demo.py` → `shape_planner.py` → core kinematics and safety modules
+
+**Circle demonstration**
+
+`run_circle.sh` → `clear_marks.py` → `circle_guide.py` → `circle_demo.py` → `shape_planner.py` → core kinematics and safety modules
+
+The guide scripts draw visual outlines in Gazebo. The planner generates the robot path, while the ROS trajectory components handle conversion and controller communication. Tracking-error measurement uses joint-state feedback and forward kinematics; it does not imply closed-loop Cartesian correction.
 
 ## 7. How to Build and Run the Project
 
@@ -564,6 +618,8 @@ cd ~/robot_arm_ws/src/robot_arm_description
 ### 7.4 Run Dry-Run Validation (Safe Mode — No Robot Movement)
 Run trajectory safety checks and verify timing without commanding the motors:
 ```bash
+cd ~/robot_arm_ws
+
 # Dry-run for a 20 mm square trajectory:
 python3 src/robot_arm_description/scripts/motion_planning/trajectory_publisher.py --shape square
 
@@ -574,6 +630,8 @@ python3 src/robot_arm_description/scripts/motion_planning/trajectory_publisher.p
 ### 7.5 Execute Live Trajectories in Gazebo
 To command actual motion on the simulated robot:
 ```bash
+cd ~/robot_arm_ws
+
 # 1. Execute smooth Cartesian straight line (+20 mm along Y-axis):
 python3 src/robot_arm_description/scripts/motion_planning/trajectory_publisher.py --shape line --dy 20 --execute
 
@@ -589,6 +647,7 @@ cd ~/robot_arm_ws/src/robot_arm_description
 ### 7.6 Clear Gazebo Markers
 To clean up trail dots from previous runs:
 ```bash
+cd ~/robot_arm_ws
 python3 src/robot_arm_description/scripts/common/clear_marks.py
 ```
 
