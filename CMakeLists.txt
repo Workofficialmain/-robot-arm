@@ -12,4 +12,11 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(
+  DIRECTORY scripts/motion_planning/
+  DESTINATION lib/${PROJECT_NAME}/motion_planning
+  FILES_MATCHING
+  PATTERN "*.py"
+)
+
 ament_package()
