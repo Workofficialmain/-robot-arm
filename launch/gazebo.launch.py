@@ -22,7 +22,8 @@ def generate_launch_description():
     )
 
     gazebo = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(gazebo_launch)
+        PythonLaunchDescriptionSource(gazebo_launch),
+        launch_arguments={"world": os.path.join(package_share, "worlds", "white.world")}.items()
     )
 
     robot_state_publisher = Node(
