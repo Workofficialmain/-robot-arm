@@ -1,4 +1,4 @@
-# 3-DOF Robotic Arm — Complete CAD-to-ROS 2 Motion Planning & Cartesian Trajectory Control
+# 3-DOF Robotic Manipulator with Adaptive Gripper — Computer Vision and Pick-and-Place Automation
 
 [![ROS 2](https://img.shields.io/badge/ROS_2-Humble_Hawksbill-22314E?logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
 [![Gazebo](https://img.shields.io/badge/Simulator-Gazebo_Classic-orange?logo=gazebo&logoColor=white)](https://classic.gazebosim.org/)
@@ -295,166 +295,366 @@ Target: $(x=378.0, y=0.0, z=293.0)$ with `elbow="up"`:
 
 ### 3.3 Jacobian Matrix (Differential Kinematics)
 
-#### Why We Need It
-The Jacobian matrix $J(q)$ relates joint velocities $\dot{q} = [\dot{q}_1, \dot{q}_2, \dot{q}_3]^T$ to linear Cartesian velocities $V = [\dot{x}, \dot{y}, \dot{z}]^T$:
-$$V = J(q) \dot{q}$$
-We need it to:
-1. Compute the exact motor angular speeds required to trace a straight line or arc at a specified speed.
-2. Detect kinematic singularities (where the arm loses degrees of freedom).
-3. Map Cartesian endpoint forces and torques.
+#### Purpose
 
-#### Derivation of the $3 \times 3$ Jacobian
-Recall:
-$$x = r \cos(q_1), \quad y = r \sin(q_1), \quad z = 52.0 + L_1 \sin(\phi_1) + L_2 \sin(\phi_2)$$
-where $\phi_1 = \Phi_{1,0} - q_2$, $\phi_2 = \Phi_{2,0} - q_2 - q_3$, and $r = L_1 \cos(\phi_1) + L_2 \cos(\phi_2)$.
+Forward kinematics maps joint positions to the TCP position. The Jacobian describes how small joint motions produce TCP linear motion.
 
-Taking partial derivatives with respect to each joint:
-1. **With respect to $q_1$**:
-   $$\frac{\partial x}{\partial q_1} = -r \sin(q_1), \quad \frac{\partial y}{\partial q_1} = r \cos(q_1), \quad \frac{\partial z}{\partial q_1} = 0$$
-2. **With respect to $q_2$**:
-   Notice $\frac{\partial \phi_1}{\partial q_2} = -1$ and $\frac{\partial \phi_2}{\partial q_2} = -1$.
-   $$\frac{\partial r}{\partial q_2} = L_1 \sin(\phi_1) + L_2 \sin(\phi_2) \equiv dr_2$$
-   $$\frac{\partial x}{\partial q_2} = dr_2 \cos(q_1), \quad \frac{\partial y}{\partial q_2} = dr_2 \sin(q_1)$$
-   $$\frac{\partial z}{\partial q_2} = -L_1 \cos(\phi_1) - L_2 \cos(\phi_2) = -r$$
-3. **With respect to $q_3$**:
-   Notice $\frac{\partial \phi_1}{\partial q_3} = 0$ and $\frac{\partial \phi_2}{\partial q_3} = -1$.
-   $$\frac{\partial r}{\partial q_3} = L_2 \sin(\phi_2) \equiv dr_3$$
-   $$\frac{\partial x}{\partial q_3} = dr_3 \cos(q_1), \quad \frac{\partial y}{\partial q_3} = dr_3 \sin(q_1)$$
-   $$\frac{\partial z}{\partial q_3} = -L_2 \cos(\phi_2)$$
+Let
 
-#### The Final Jacobian Matrix
-$$J(q) = \begin{bmatrix} -r \sin(q_1) & dr_2 \cos(q_1) & dr_3 \cos(q_1) \\ r \cos(q_1) & dr_2 \sin(q_1) & dr_3 \sin(q_1) \\ 0 & -r & -L_2 \cos(\phi_2) \end{bmatrix}$$
+\[
+\mathbf q =
+\begin{bmatrix}
+q_1\\q_2\\q_3
+\end{bmatrix},
+\qquad
+\dot{\mathbf q} =
+\begin{bmatrix}
+\dot q_1\\\dot q_2\\\dot q_3
+\end{bmatrix}
+\]
 
----
+and
+
+\[
+\mathbf p =
+\begin{bmatrix}
+x\\y\\z
+\end{bmatrix},
+\qquad
+\dot{\mathbf p} =
+\begin{bmatrix}
+\dot x\\\dot y\\\dot z
+\end{bmatrix}.
+\]
+
+The differential-kinematics relationship is
+
+\[
+\boxed{\dot{\mathbf p}=J(\mathbf q)\dot{\mathbf q}}
+\]
+
+Here, \(J(\mathbf q)\) is a \(3\times3\) linear-velocity Jacobian. It maps the three joint velocities to the TCP's Cartesian velocity in the \(X,Y,Z\) directions. It does not map forces or torques.
+
+#### Derivation from the Forward-Kinematics Equations
+
+The arm geometry uses
+
+\[
+\phi_1=\Phi_{1,0}-q_2,
+\qquad
+\phi_2=\Phi_{2,0}-q_2-q_3
+\]
+
+and
+
+\[
+r=L_1\cos\phi_1+L_2\cos\phi_2.
+\]
+
+The TCP position is
+
+\[
+x=r\cos q_1,\qquad
+y=r\sin q_1,
+\]
+
+\[
+z=z_0+L_1\sin\phi_1+L_2\sin\phi_2,
+\qquad z_0=52\text{ mm}.
+\]
+
+Differentiate the radial distance with respect to the shoulder and elbow joint variables:
+
+\[
+\frac{\partial r}{\partial q_2}
+=L_1\sin\phi_1+L_2\sin\phi_2
+\equiv d_{r2}
+\]
+
+\[
+\frac{\partial r}{\partial q_3}
+=L_2\sin\phi_2
+\equiv d_{r3}.
+\]
+
+The individual partial derivatives are therefore
+
+\[
+\frac{\partial x}{\partial q_1}=-r\sin q_1,
+\quad
+\frac{\partial x}{\partial q_2}=d_{r2}\cos q_1,
+\quad
+\frac{\partial x}{\partial q_3}=d_{r3}\cos q_1,
+\]
+
+\[
+\frac{\partial y}{\partial q_1}=r\cos q_1,
+\quad
+\frac{\partial y}{\partial q_2}=d_{r2}\sin q_1,
+\quad
+\frac{\partial y}{\partial q_3}=d_{r3}\sin q_1,
+\]
+
+\[
+\frac{\partial z}{\partial q_1}=0,
+\quad
+\frac{\partial z}{\partial q_2}=-r,
+\quad
+\frac{\partial z}{\partial q_3}=-L_2\cos\phi_2.
+\]
+
+Arranging these derivatives gives the Jacobian:
+
+\[
+\boxed{
+J(\mathbf q)=
+\begin{bmatrix}
+-r\sin q_1 & d_{r2}\cos q_1 & d_{r3}\cos q_1\\
+ r\cos q_1 & d_{r2}\sin q_1 & d_{r3}\sin q_1\\
+ 0 & -r & -L_2\cos\phi_2
+\end{bmatrix}
+}
+\]
+
+#### How This Equation Is Implemented
+
+In `scripts/motion_planning/kinematics.py`, the `jacobian(q)` function:
+
+1. Reads the three joint positions.
+2. Calculates \(\phi_1\), \(\phi_2\), and the radial distance \(r\).
+3. Calculates \(d_{r2}\) and \(d_{r3}\).
+4. Constructs the matrix above and returns it as a \(3\times3\) matrix.
+
+The Jacobian is then used to relate a requested TCP velocity to the joint velocities needed to produce it. The inverse-velocity calculation is described in the next section.
 
 ### 3.4 Inverse Jacobian & Damped Least Squares (DLS)
 
-#### Why Standard Inversion Fails at Singularities
-If we invert the Jacobian naively:
-$$\dot{q} = J(q)^{-1} V$$
-The determinant of $J$ appears in the denominator. When the arm is fully extended or folded on itself, $\det(J) \to 0$. As $\det(J) \to 0$, $J^{-1} \to \infty$, ordering the motors to accelerate to thousands of rad/s. This results in controller tripping, emergency stops, or hardware damage.
+#### Why an Ordinary Inverse Can Fail
 
-#### The Damped Least Squares Solution
-Instead of pure inversion, DLS formulates a trade-off optimization problem:
-$$\min_{\dot{q}} \left( \| J \dot{q} - V \|^2 + \lambda^2 \| \dot{q} \|^2 \right)$$
-where $\lambda$ is a damping constant. Minimizing this objective function yields the damped pseudoinverse:
-$$J_{\text{damped}}^+ = (J^T J + \lambda^2 I)^{-1} J^T$$
-$$\dot{q} = J_{\text{damped}}^+ V$$
+For a nonsingular square Jacobian, the direct relationship would be
 
-#### Adaptive Damping Strategy
-In our planner (`kinematics.py`), damping is dynamically adjusted based on a dimensionless singularity metric $\mu(q)$:
-$$\mu(q) = \frac{|\det(J)|}{\| J_{*,1} \| \cdot \| J_{*,2} \| \cdot \| J_{*,3} \|}$$
-- When the arm is in an open, dexterous posture ($\mu > 0.1$), the damping is minimal ($\lambda = 0.1$), prioritizing exact tracking.
-- As the robot approaches a singularity ($\mu \le 0.1$), damping automatically increases:
-  $$\lambda = 0.1 + 5.0 \times \left(1.0 - \frac{\mu(q)}{0.1}\right)$$
-This bounds joint velocities smoothly and prevents instabilities.
+\[
+\dot{\mathbf q}=J^{-1}\dot{\mathbf p}.
+\]
 
----
+However, at or near a singular configuration, the Jacobian becomes singular or poorly conditioned. Direct inversion can then fail or produce excessively large joint velocities.
+
+The project therefore uses a damped least-squares (DLS) pseudoinverse for practical Cartesian velocity planning.
+
+#### Damped Least-Squares Derivation
+
+DLS finds joint velocity values that minimise the Cartesian velocity error while penalising unnecessarily large joint velocities:
+
+\[
+\min_{\dot{\mathbf q}}
+\left(
+\left\|J\dot{\mathbf q}-\dot{\mathbf p}\right\|^2
++
+\lambda^2\left\|\dot{\mathbf q}\right\|^2
+\right).
+\]
+
+The resulting damped pseudoinverse is
+
+\[
+\boxed{
+J^+_\lambda=
+\left(J^T J+\lambda^2 I\right)^{-1}J^T
+}
+\]
+
+and the joint velocity command is
+
+\[
+\boxed{
+\dot{\mathbf q}=J^+_\lambda\dot{\mathbf p}.
+}
+\]
+
+Here, \(I\) is the \(3\times3\) identity matrix and \(\lambda\) is the damping factor. Increasing damping reduces the effect of poorly conditioned directions, at the cost of some Cartesian velocity accuracy.
+
+#### Adaptive Damping Used by the Planner
+
+The code calculates a normalised singularity measure:
+
+\[
+\mu=
+\frac{|\det(J)|}
+{\|J_{:,1}\|\,\|J_{:,2}\|\,\|J_{:,3}\|}
+\]
+
+where \(J_{:,i}\) denotes column \(i\) of the Jacobian. A small value indicates that the Jacobian is approaching a singular configuration.
+
+The planner selects damping using
+
+\[
+\boxed{
+\lambda=0.1+
+5\max\left(0,1-\frac{\mu}{0.1}\right).
+}
+\]
+
+This gives greater damping as the singularity measure approaches zero.
+
+#### Exact Analytical Inverse Versus the DLS Planner Method
+
+The source also contains `analytical_inverse_jacobian(q)` and `analytical_inverse_joint_velocity(...)`, which implement an exact analytical inverse for the project's alternative kinematic-angle convention. This inverse is useful for mathematical verification, but its denominators approach zero at singular configurations.
+
+The practical Cartesian trajectory planners use `inverse_jacobian(q, damping=...)`, which computes the DLS expression above. These are two distinct implementations and should not be confused.
 
 ### 3.5 How Everything Links Together (System Pipeline)
 
-The diagram below shows how every mathematical component interacts within the runtime motion planning architecture:
+The runtime planning and execution flow is:
 
-```
-[Target Shape Parameters]
-(Line, Square, Circle)
-         |
-         v
-[Cartesian Path Discretization (50 Hz)] -------------------+
-         |                                                 |
-         v                                                 v
-[Quintic Polynomial Time Scaling]                  [Tangential Speed]
-  s(u) = 10u³ - 15u⁴ + 6u⁵                                 |
-         |                                                 |
-         v                                                 v
-[Cartesian Coordinates (x, y, z)]                [Cartesian Velocity (vx, vy, vz)]
-         |                                                 |
-         v                                                 v
-[Analytical Inverse Kinematics (IK)]              [Singularity Metric & DLS Inverse]
-  q = IK(x, y, z, elbow="up")                       q_dot = (JᵀJ + λ²I)⁻¹ Jᵀ V
-         |                                                 |
-         +------------------------+------------------------+
-                                  |
-                                  v
-                    [Safety & Constraint Validator]
-                     - Position:  -3.14 to +3.14 rad
-                     - Velocity:  <= 2.0 rad/s
-                     - Accel:     <= 4.0 rad/s²
-                                  |
-               +------------------+------------------+
-               | If Limits Exceeded                  | If Safe
-               v                                     v
-     [Dynamic Time Scaling]                 [ROS 2 JointTrajectory]
-       Scale time by 1/s                     points: (q, q_dot, time)
-       Scale vel by s                                |
-       Scale accel by s²                             v
-                                            [FollowJointTrajectory Action]
-                                            /arm_controller/follow_joint_trajectory
-                                                     |
-                                                     v
-                                            [Gazebo ros2_control Simulation]
-                                                     |
-                                                     v
-                                            [TF /joint_states Tracking Feedback]
-                                            RMS Error Calculation & Marker Spawning
+```text
+[Line / Square / Circle Target]
+              |
+              v
+     [Cartesian Path Planner]
+       50 Hz + Quintic Scaling
+              |
+       +------+------+
+       |             |
+       v             v
+ [TCP Position] [TCP Velocity]
+       |             |
+       v             v
+      [IK]    [Singularity Measure]
+       |             |
+       v             v
+ [Joint Position] [Adaptive DLS]
+       |             |
+       +------+------+
+              |
+              v
+     [Trajectory Validation]
+              |
+              v
+      [ROS JointTrajectory]
+              |
+              v
+ [FollowJointTrajectory Action]
+              |
+              v
+    [ros2_control + Gazebo]
+              |
+              v
+ [Joint-State / Controller Feedback]
+              |
+              v
+ [FK-Based TCP Tracking Error]
+              |
+              v
+ [Optional Trail Visualization]
 ```
 
----
+The publisher checks joint-position limits, joint-velocity limits, estimated acceleration limits, timestamps and the initial joint state before execution. The `safety.py` module also provides time-retiming utilities, but the main publisher does not automatically call `make_trajectory_safe()` when validation fails.
+
+TCP tracking error is measured using controller feedback and forward kinematics. This is monitoring, not Cartesian closed-loop correction. The \(4.0\text{ rad/s}^2\) acceleration limit is a software planning constraint, not a hardware-rated limit.
+In `cartesian_planner.py` and `shape_planner.py`, each Cartesian sample provides:
+
+- A desired TCP position.
+- A desired TCP linear velocity.
+- An inverse-kinematics solution for the joint positions.
+- A singularity measure and corresponding damping value.
+- A DLS calculation that converts the Cartesian velocity into three joint velocities.
+
+The resulting joint positions and velocities are passed to the trajectory-building stage. Joint limits and trajectory constraints are checked separately; DLS is not itself a substitute for safety validation.
+
 
 ## 4. Cartesian Shape Tracing: Square and Circle
 
 ### 4.1 Circle Path Generation
-The circle planner (`plan_cartesian_circle` in `shape_planner.py`) generates a closed circular orbit in the XY plane starting from the current tool position:
-- **Center**: Located at $(c_x, c_y) = (x_{\text{start}}, y_{\text{start}} - R)$
-- **Parametric Equations**:
-  $$x(\theta) = c_x + R \cos(\theta), \quad y(\theta) = c_y + R \sin(\theta), \quad z(\theta) = z_{\text{start}}$$
-  where $\theta$ sweeps smoothly from $\frac{\pi}{2}$ to $\frac{5\pi}{2}$ ($360^\circ$).
-- **Tangent Velocity Vector**:
-  $$V_{\text{tangent}} = \begin{bmatrix} -\sin(\theta) \\ \cos(\theta) \\ 0 \end{bmatrix} \times v_{\text{speed}}(t)$$
-The quintic time scaling ensures the tool starts from rest ($0\text{ mm/s}$), accelerates smoothly to peak tracing speed, and decelerates back to rest as the circle closes.
+
+The standalone `plan_cartesian_circle()` function in `shape_planner.py` generates a complete circular path in the XY plane.
+
+For a starting point \((x_s,y_s,z_s)\) and radius \(R\), the centre is:
+
+\[
+c_x=x_s,\qquad c_y=y_s-R
+\]
+
+The Cartesian path is:
+
+\[
+x(\theta)=c_x+R\cos\theta
+\]
+
+\[
+y(\theta)=c_y+R\sin\theta
+\]
+
+\[
+z(\theta)=z_s
+\]
+
+where:
+
+\[
+\frac{\pi}{2}\leq\theta\leq\frac{5\pi}{2}
+\]
+
+The tangent direction is:
+
+\[
+\mathbf{t}(\theta)=
+\begin{bmatrix}
+-\sin\theta\\
+\cos\theta\\
+0
+\end{bmatrix}
+\]
+
+Quintic time scaling controls the progress along the path, starting and finishing at zero speed.
+
+**Actual execution:** `trajectory_publisher.py` constructs the circle using `_arc_segment()` and `_plan_path()`, with the supplied centre \((c_x,c_y)\) and angular range \(0\) to \(2\pi\). Therefore, execution starts at the rightmost point of the circle. The demonstration has five stages: approach, move to the tracing start, trace the circle, retract and return.
 
 ### 4.2 Rounded Square Path Generation
-A naive square path has sharp $90^\circ$ corners. Sharp corners have two major engineering drawbacks:
-1. They require infinite acceleration ($\dot{V} \to \infty$), which physical motors cannot deliver.
-2. Stopping completely at each corner creates severe mechanical jerk and stuttering.
 
-To solve this, our planner (`plan_cartesian_square` in `shape_planner.py`) builds a **rounded square** combining 4 linear edges and 4 circular blend arcs with radius $r_{\text{blend}} = 4.0\text{ mm}$:
+A square with sharp corners requires an instantaneous change in velocity direction if the TCP moves continuously at nonzero speed. This creates demanding acceleration requirements. To avoid sharp directional changes, the planner combines four straight edges with four quarter-circle corner blends.
 
-```
-          (x, y + size)  Top Edge  (x + size - 2r, y + size)
-                 +-----------------------+
-                /                         \ Arc 2 (r = 4 mm)
-  Arc 3 (r)    /                           \
-              |                             |
-    Left Edge |                             | Right Edge
-              |                             |
-  Arc 4 (r)    \                           /
-                \                         / Arc 1 (r = 4 mm)
-                 +-----------------------+
-              (x, y)    Bottom Edge    (x + size - 2r, y)
-             [Start]
-```
+The `plan_cartesian_square()` function in `shape_planner.py` accepts the starting point \(P_0=(x,y,z)\), square size \(S\), and blend radius \(r\), subject to:
 
-- **Bottom Edge**: Straight line from $(x, y, z)$ to $(x + \text{size} - 2r, y, z)$.
-- **Corner 1**: Quarter-circle arc from $-\frac{\pi}{2}$ to $0$.
-- **Right Edge**: Straight line from $(x + \text{size} - r, y + r, z)$ to $(x + \text{size} - r, y + \text{size} - r, z)$.
-- **Corner 2**: Quarter-circle arc from $0$ to $\frac{\pi}{2}$.
-- **Top Edge**: Straight line from $(x + \text{size} - 2r, y + \text{size}, z)$ to $(x, y + \text{size}, z)$.
-- **Corner 3**: Quarter-circle arc from $\frac{\pi}{2}$ to $\pi$.
-- **Left Edge**: Straight line from $(x - r, y + \text{size} - r, z)$ to $(x - r, y + r, z)$.
-- **Corner 4**: Quarter-circle arc from $\pi$ to $\frac{3\pi}{2}$ returning exactly to $(x, y, z)$.
+\[
+S>0,\qquad 0<r<\frac{S}{2}
+\]
 
-This continuous-tangent formulation preserves $C^1$ velocity continuity throughout the entire square.
+The eight path segments are:
 
----
+1. Bottom edge: \((x,y,z)\) to \((x+S-2r,y,z)\).
+2. Bottom-right arc: centre \((x+S-2r,y+r)\), angle \(-\pi/2\) to \(0\).
+3. Right edge: \((x+S-r,y+r,z)\) to \((x+S-r,y+S-r,z)\).
+4. Top-right arc: centre \((x+S-2r,y+S-r)\), angle \(0\) to \(\pi/2\).
+5. Top edge: \((x+S-2r,y+S,z)\) to \((x,y+S,z)\).
+6. Top-left arc: centre \((x,y+S-r)\), angle \(\pi/2\) to \(\pi\).
+7. Left edge: \((x-r,y+S-r,z)\) to \((x-r,y+r,z)\).
+8. Bottom-left arc: centre \((x,y+r)\), angle \(\pi\) to \(3\pi/2\), closing the path.
 
+The resulting coordinate bounds are:
+
+\[
+\boxed{x-r\leq X\leq x+S-r}
+\]
+
+\[
+\boxed{y\leq Y\leq y+S}
+\]
+
+The line and arc segments have matching tangent directions at their joins, producing a geometrically tangent-continuous path. This does not imply continuous curvature or acceleration at every join.
+
+The `_plan_path()` function uses quintic path progress:
+
+\[
+s(u)=10u^3-15u^4+6u^5,\qquad u=\frac{t}{T}
+\]
+
+At each sample, it calculates the Cartesian position and tangent velocity, solves inverse kinematics, evaluates the singularity measure, applies adaptive DLS, and checks joint limits. The complete path starts and ends at zero speed without stopping at every rounded corner.
 ## 5. Testing, Dry-Runs, and Verification
 
-Every component underwent rigorous automated verification before executing on simulated or physical hardware:
+The following tests document software-level verification, trajectory dry runs, and Gazebo simulation execution. Physical-hardware validation has not yet been performed.
 
 ### 5.1 Kinematics Consistency Test (1000 Configurations)
-* **Objective**: Confirm that $IK(FK(q)) = q$ with zero numerical drift across the entire workspace.
-* **Method**: Evaluated 1,000 random configurations covering all joints and tested both elbow configurations (2,000 IK solutions).
+* **Objective**: Confirm that inverse kinematics reconstructs the Cartesian positions produced by forward kinematics for sampled joint configurations.* **Method**: Evaluated 1,000 random configurations covering all joints and tested both elbow configurations (2,000 IK solutions).
 * **Result**:
   $$\text{Worst-case Cartesian error} \le 3.75 \times 10^{-13}\text{ mm}$$
   **Status**: **PASS**
@@ -462,8 +662,7 @@ Every component underwent rigorous automated verification before executing on si
 ### 5.2 Jacobian Gradient Test
 * **Objective**: Ensure the analytical Jacobian partial derivatives match numerical gradients.
 * **Method**: Compared analytical $J(q)$ against finite-difference evaluations with step size $\epsilon = 10^{-6}$.
-* **Result**: Residual difference $< 10^{-9}$.
-  **Status**: **PASS**
+* **Result**: Finite-difference residual approximately $4.25 \times 10^{-8}$.  **Status**: **PASS**
 
 ### 5.3 Square Trajectory Dry-Run Test
 * **Configuration**: Side length = $20\text{ mm}$, Blend radius = $4\text{ mm}$, Duration = $8.0\text{ s}$, Frequency = $50\text{ Hz}$.
@@ -528,8 +727,7 @@ These modules form the main planning and execution pipeline.
 | [`trajectories.py`](scripts/motion_planning/trajectories.py) | Generates smooth quintic trajectory interpolation and provides trajectory time-scaling functionality. | Used when generating smooth motion profiles. |
 | [`cartesian_planner.py`](scripts/motion_planning/cartesian_planner.py) | Generates Cartesian straight-line paths and maps Cartesian motion into joint-space motion using the robot kinematics. | Straight-line trajectory example through [`trajectory_publisher.py`](scripts/motion_planning/trajectory_publisher.py). |
 | [`shape_planner.py`](scripts/motion_planning/shape_planner.py) | Generates Cartesian square and circle paths, including rounded-square path geometry. | Used by [`square_demo.py`](scripts/motion_planning/square_demo.py) and [`circle_demo.py`](scripts/motion_planning/circle_demo.py). |
-| [`safety.py`](scripts/motion_planning/safety.py) | Validates planned joint positions, velocities and configured acceleration limits, and calculates time scaling when required. These are software planning checks, not a physical torque model. | Used before trajectory execution. |
-| [`ros_trajectory.py`](scripts/motion_planning/ros_trajectory.py) | Converts planned joint waypoints and timing information into ROS 2 `JointTrajectory` messages. | Connects planning data to the ROS 2 controller interface. |
+| [`safety.py`](scripts/motion_planning/safety.py) | Provides standalone utilities for trajectory safety checks and dynamic time scaling. The main trajectory publisher performs its own sample validation and does not automatically call `make_trajectory_safe()`. | Available for trajectory-planning workflows. || [`ros_trajectory.py`](scripts/motion_planning/ros_trajectory.py) | Converts planned joint waypoints and timing information into ROS 2 `JointTrajectory` messages. | Connects planning data to the ROS 2 controller interface. |
 | [`trajectory_publisher.py`](scripts/motion_planning/trajectory_publisher.py) | Provides the ROS 2 trajectory-publishing node. It supports dry-run validation and explicitly requested execution, and can sample `/joint_states` to measure TCP tracking error using forward kinematics. | Used for straight-line, square and circle trajectory-publisher workflows. |
 
 ### 6.3 Motion-Planning Demonstrations
@@ -577,8 +775,7 @@ These scripts create visual guides or traces in Gazebo. A guide marker is a visu
 
 The following relationships show how the source files connect in the project's examples:
 
-**Straight-line planning and execution**
-
+`cartesian_planner.py` → `kinematics.py` → `joint_mapping.py` → `ros_trajectory.py` → `trajectory_publisher.py`
 `cartesian_planner.py` → `kinematics.py` → `joint_mapping.py` → `safety.py` → `trajectories.py` (where applicable) → `ros_trajectory.py` → `trajectory_publisher.py`
 
 **Square demonstration**
@@ -621,12 +818,9 @@ Run trajectory safety checks and verify timing without commanding the motors:
 cd ~/robot_arm_ws
 
 # Dry-run for a 20 mm square trajectory:
-python3 src/robot_arm_description/scripts/motion_planning/trajectory_publisher.py --shape square
-
+python3 src/robot_arm_description/scripts/motion_planning/trajectory_publisher.py --shape square --size 20 --blend-radius 4 --dry
 # Dry-run for a 10 mm radius circle trajectory:
-python3 src/robot_arm_description/scripts/motion_planning/trajectory_publisher.py --shape circle
-```
-
+python3 src/robot_arm_description/scripts/motion_planning/trajectory_publisher.py --shape circle --radius 10 --dry
 ### 7.5 Execute Live Trajectories in Gazebo
 To command actual motion on the simulated robot:
 ```bash
