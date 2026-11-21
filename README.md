@@ -19,10 +19,12 @@ A complete end-to-end robotics project developing a **3-Degree-of-Freedom (3-DOF
    - [3.3 Jacobian Matrix (Differential Kinematics)](#33-jacobian-matrix-differential-kinematics)
    - [3.4 Inverse Jacobian & Damped Least Squares (DLS)](#34-inverse-jacobian--damped-least-squares-dls)
    - [3.5 How Everything Links Together (System Pipeline)](#35-how-everything-links-together-system-pipeline)
+   - [3.6 Implementation in Code: From Equations to `kinematics.py`](#36-implementation-in-code-from-equations-to-kinematicspy)
 4. [Cartesian Shape Tracing: Square and Circle](#4-cartesian-shape-tracing-square-and-circle)
 5. [Testing, Dry-Runs, and Verification](#5-testing-dry-runs-and-verification)
 6. [Repository Architecture & File Map (Tabular Guide)](#6-repository-architecture--file-map-tabular-guide)
 7. [How to Build and Run the Project](#7-how-to-build-and-run-the-project)
+8. [ROS 2 Controllers and Control Stack Used](#8-ros-2-controllers-and-control-stack-used)
 
 ---
 
@@ -196,7 +198,7 @@ The robot is a 3-DOF vertical articulated arm (RRR configuration: 1 horizontal a
 
 #### Kinematic Reference Angles
 Because the CAD geometry contains fixed structural offsets, the analytical equations use zero-reference angles:
-- $\Phi_{1,0} = \operatorname{atan2}(236.8, 30.0) \approx 1.44474\text{ rad} \approx 82.78^\circ$
+- $\Phi_{1,0} = \operatorname{atan2}(236.8, 30.0) \approx 1.44478\text{ rad} \approx 82.78^\circ$
 - $\Phi_{2,0} = \operatorname{atan2}(4.2, 348.0) \approx 0.012068\text{ rad} \approx 0.691^\circ$
 
 ---
@@ -234,7 +236,7 @@ Forward kinematics maps the joint space configurations $(q_1, q_2, q_3)$ into 3D
 
 #### Concrete Calculation Example
 Let $q = [0.0, 0.0, 0.0]\text{ rad}$ (zero position):
-1. $\phi_1 = 1.44474 - 0 = 1.44474\text{ rad} \implies \cos(\phi_1) = \frac{30.0}{238.693} \approx 0.12568, \; \sin(\phi_1) = \frac{236.8}{238.693} \approx 0.99207$
+1. $\phi_1 = 1.44478 - 0 = 1.44478\text{ rad} \implies \cos(\phi_1) = \frac{30.0}{238.693} \approx 0.12568, \; \sin(\phi_1) = \frac{236.8}{238.693} \approx 0.99207$
 2. $\phi_2 = 0.012068 - 0 - 0 = 0.012068\text{ rad} \implies \cos(\phi_2) = \frac{348.0}{348.025} \approx 0.99993, \; \sin(\phi_2) = \frac{4.2}{348.025} \approx 0.01207$
 3. Radial distance:
    $$r = 238.693 \times 0.12568 + 348.025 \times 0.99993 = 30.0 + 348.0 = 378.0\text{ mm}$$
@@ -284,10 +286,10 @@ Target: $(x=378.0, y=0.0, z=293.0)$ with `elbow="up"`:
 3. $d^2 = 378^2 + 241^2 = 142884 + 58081 = 200965$
 4. $L_1^2 = 56974.24, \; L_2^2 = 121121.64 \implies L_1^2 + L_2^2 = 178095.88$
 5. $D = \frac{200965 - 178095.88}{2 \times 238.693 \times 348.025} = \frac{22869.12}{166142.1} \approx 0.137648$
-6. $\delta = -\arccos(0.137648) \approx -1.43267\text{ rad}$
-7. $\phi_1 = \operatorname{atan2}(241, 378) - \operatorname{atan2}(348.025 \sin(-1.43267), 238.693 + 348.025 \cos(-1.43267)) \approx 1.44474\text{ rad}$
-8. $\phi_2 = 1.44474 - 1.43267 = 0.01207\text{ rad}$
-9. $q_2 = 1.44474 - 1.44474 = 0.0\text{ rad}$
+6. $\delta = -\arccos(0.137648) \approx -1.43271\text{ rad}$
+7. $\phi_1 = \operatorname{atan2}(241, 378) - \operatorname{atan2}(348.025 \sin(-1.43271), 238.693 + 348.025 \cos(-1.43271)) \approx 1.44478\text{ rad}$
+8. $\phi_2 = 1.44478 - 1.43271 = 0.01207\text{ rad}$
+9. $q_2 = 1.44478 - 1.44478 = 0.0\text{ rad}$
 10. $q_3 = (0.01207 - 0.01207) - 0.0 = 0.0\text{ rad}$
 **Solution**: $q = [0.0, 0.0, 0.0]\text{ rad}$. Perfect agreement with Forward Kinematics!
 
@@ -561,6 +563,315 @@ In `cartesian_planner.py` and `shape_planner.py`, each Cartesian sample provides
 
 The resulting joint positions and velocities are passed to the trajectory-building stage. Joint limits and trajectory constraints are checked separately; DLS is not itself a substitute for safety validation.
 
+
+### 3.6 Implementation in Code: From Equations to `kinematics.py`
+
+Sections 3.1 to 3.4 derive the mathematics. This section shows where each equation lives in the source. Everything below is in [`scripts/motion_planning/kinematics.py`](scripts/motion_planning/kinematics.py), written in plain Python (`math` module only, no NumPy). Lengths are in **millimetres** and angles in **radians**. The code snippets are copied from the repository.
+
+#### 3.6.1 Constants (Section 2 geometry as code)
+
+```python
+SHOULDER = (0.0, 0.0, 52.0)
+ELBOW = (30.0, 0.0, 288.8)
+TIP = (378.0, 0.0, 293.0)
+
+L1 = math.hypot(30.0, 236.8)      # shoulder pivot -> elbow pivot
+L2 = math.hypot(348.0, 4.2)       # elbow pivot -> tool tip
+
+PHI1_0 = math.atan2(236.8, 30.0)  # zero-reference angle of link 1
+PHI2_0 = math.atan2(4.2, 348.0)   # zero-reference angle of link 2
+
+JOINT_LIMITS = ((-3.14, 3.14), (-1.57, 1.57), (-1.57, 1.57))
+```
+
+| Math symbol | Code name | Value |
+|---|---|---|
+| $L_1$ | `L1` | 238.693 mm |
+| $L_2$ | `L2` | 348.025 mm |
+| $\Phi_{1,0}$ | `PHI1_0` | 1.44478 rad |
+| $\Phi_{2,0}$ | `PHI2_0` | 0.012068 rad |
+| $Z_{\text{shoulder}}$ | `SHOULDER[2]` | 52.0 mm |
+
+`math.hypot` computes $\sqrt{a^2+b^2}$, which is exactly how $L_1$ and $L_2$ are defined in Section 2.1.
+
+#### 3.6.2 Forward kinematics: `forward_kinematics(q)`
+
+```python
+def forward_kinematics(q):
+    """Return end-effector (x, y, z) in millimetres."""
+    q1, q2, q3 = q
+
+    phi1 = PHI1_0 - q2
+    phi2 = PHI2_0 - q2 - q3
+
+    r = L1 * math.cos(phi1) + L2 * math.cos(phi2)
+
+    x = r * math.cos(q1)
+    y = r * math.sin(q1)
+    z = SHOULDER[2] + L1 * math.sin(phi1) + L2 * math.sin(phi2)
+
+    return x, y, z
+```
+
+| Equation (Section 3.1) | Line of code |
+|---|---|
+| $\phi_1 = \Phi_{1,0} - q_2$ | `phi1 = PHI1_0 - q2` |
+| $\phi_2 = \Phi_{2,0} - q_2 - q_3$ | `phi2 = PHI2_0 - q2 - q3` |
+| $r = L_1\cos\phi_1 + L_2\cos\phi_2$ | `r = L1*cos(phi1) + L2*cos(phi2)` |
+| $x = r\cos q_1,\; y = r\sin q_1$ | `x = r*cos(q1)`, `y = r*sin(q1)` |
+| $z = 52 + L_1\sin\phi_1 + L_2\sin\phi_2$ | `z = SHOULDER[2] + L1*sin(phi1) + L2*sin(phi2)` |
+
+Running it at the zero pose returns `(378.0, 0.0, 293.0)`, the CAD tool-tip position.
+
+#### 3.6.3 Inverse kinematics: `inverse_kinematics(x, y, z, elbow="up", enforce_limits=False)`
+
+```python
+r = math.hypot(x, y)
+q1 = math.atan2(y, x)
+zt = z - SHOULDER[2]
+
+D = (r**2 + zt**2 - L1**2 - L2**2) / (2.0 * L1 * L2)
+
+tolerance = 1e-9
+if D < -1.0 - tolerance or D > 1.0 + tolerance:
+    raise ValueError("Target is outside the robot workspace")
+D = max(-1.0, min(1.0, D))
+
+if elbow == "up":
+    delta = -math.acos(D)
+else:
+    delta = math.acos(D)
+
+phi1 = math.atan2(zt, r) - math.atan2(
+    L2 * math.sin(delta),
+    L1 + L2 * math.cos(delta)
+)
+phi2 = phi1 + delta
+
+q2 = PHI1_0 - phi1
+q3 = (PHI2_0 - phi2) - q2
+```
+
+| Equation (Section 3.2) | Code |
+|---|---|
+| $q_1 = \operatorname{atan2}(y, x)$ | `q1 = math.atan2(y, x)` |
+| $r = \sqrt{x^2+y^2}$ | `r = math.hypot(x, y)` |
+| $z_t = z - 52$ | `zt = z - SHOULDER[2]` |
+| $D = \dfrac{r^2 + z_t^2 - L_1^2 - L_2^2}{2L_1L_2}$ | `D = (...) / (2.0 * L1 * L2)` |
+| Reachability: $-1 \le D \le 1$ | `raise ValueError("Target is outside the robot workspace")` |
+| Elbow-up: $\delta = -\arccos D$ | `delta = -math.acos(D)` |
+| Elbow-down: $\delta = +\arccos D$ | `delta = math.acos(D)` |
+| $\phi_1 = \operatorname{atan2}(z_t, r) - \operatorname{atan2}(L_2\sin\delta,\, L_1 + L_2\cos\delta)$ | `phi1 = atan2(zt, r) - atan2(...)` |
+| $\phi_2 = \phi_1 + \delta$ | `phi2 = phi1 + delta` |
+| $q_2 = \Phi_{1,0} - \phi_1$ | `q2 = PHI1_0 - phi1` |
+| $q_3 = (\Phi_{2,0} - \phi_2) - q_2$ | `q3 = (PHI2_0 - phi2) - q2` |
+
+Implementation details worth knowing:
+
+- **Numerical safety:** `D` may land at `1.0000000001` because of floating-point rounding for a target exactly at full stretch. The code accepts values within `1e-9` of the limits and then clamps `D` into $[-1, 1]$ so `math.acos` never fails.
+- **Workspace check:** a target that is too far away or too close raises `ValueError`. The planners treat this as a failed plan.
+- **Joint limits:** with `enforce_limits=True`, the solution is passed through `check_joint_limits()` and a `ValueError` is raised if any angle is outside `JOINT_LIMITS`. The shape planner always calls IK with `enforce_limits=True`.
+- **Verified round trip:** for `q = (0.3, 0.2, -0.4)`, forward kinematics gives `(398.065, 123.136, 351.373)`. Running IK on that point with `elbow="up"` returns `(0.3, 0.2, -0.4)`. With `elbow="down"` it returns `(0.3, 1.4435, -2.4654)`, which reaches the same point but violates the $\pm 1.57$ rad elbow limit. This is why the planners use `elbow="up"` by default.
+
+#### 3.6.4 Jacobian: `jacobian(q)`
+
+```python
+def jacobian(q):
+    q1, q2, q3 = q
+
+    phi1 = PHI1_0 - q2
+    phi2 = PHI2_0 - q2 - q3
+
+    r = L1 * math.cos(phi1) + L2 * math.cos(phi2)
+
+    dr2 = L1 * math.sin(phi1) + L2 * math.sin(phi2)   # d_r2 = dr/dq2
+    dr3 = L2 * math.sin(phi2)                         # d_r3 = dr/dq3
+
+    return [
+        [-r * math.sin(q1), dr2 * math.cos(q1), dr3 * math.cos(q1)],
+        [ r * math.cos(q1), dr2 * math.sin(q1), dr3 * math.sin(q1)],
+        [ 0.0,              -r,                 -L2 * math.cos(phi2)],
+    ]
+```
+
+This is a line-by-line transcription of the boxed matrix in Section 3.3: `dr2` is $d_{r2}$, `dr3` is $d_{r3}$, and the returned nested list is the $3\times3$ matrix $J(\mathbf q)$ (row $i$ = $x$, $y$, $z$; column $j$ = $q_1$, $q_2$, $q_3$). At the zero pose it evaluates to:
+
+```text
+[[   0.0,  241.0,    4.2],
+ [ 378.0,    0.0,    0.0],
+ [   0.0, -378.0, -348.0]]
+```
+
+The first column says that rotating the base at 1 rad/s moves the tip at 378 mm/s in $+Y$, which matches the radial reach $r = 378$ mm.
+
+#### 3.6.5 Singularity measure and adaptive damping
+
+```python
+def singularity_measure(q):
+    j = jacobian(q)
+    columns = [[j[row][col] for row in range(3)] for col in range(3)]
+    norms = [math.sqrt(sum(v * v for v in column)) for column in columns]
+
+    if any(norm == 0.0 for norm in norms):
+        return 0.0
+
+    determinant = (
+        j[0][0] * (j[1][1]*j[2][2] - j[1][2]*j[2][1])
+        - j[0][1] * (j[1][0]*j[2][2] - j[1][2]*j[2][0])
+        + j[0][2] * (j[1][0]*j[2][1] - j[1][1]*j[2][0])
+    )
+    return abs(determinant) / (norms[0] * norms[1] * norms[2])
+```
+
+This implements
+
+$$\mu = \frac{|\det J|}{\|J_{:,1}\|\,\|J_{:,2}\|\,\|J_{:,3}\|}$$
+
+The determinant is written out by cofactor expansion along the first row, so no linear-algebra library is needed. The result is between 0 (singular) and 1 (perfectly orthogonal columns). At the zero pose, $\mu \approx 0.527$.
+
+The damping value is computed by the planners, not by `kinematics.py`. In `shape_planner.py`:
+
+```python
+measure = singularity_measure(q)
+damping = 0.1 + 5.0 * max(0.0, 1.0 - measure / 0.1)
+```
+
+which is the boxed equation $\lambda = 0.1 + 5\max(0, 1 - \mu/0.1)$ from Section 3.4:
+
+| Singularity measure $\mu$ | Damping $\lambda$ |
+|---|---|
+| $\mu \ge 0.1$ (healthy pose) | 0.1 (the minimum) |
+| $\mu = 0.05$ | 2.6 |
+| $\mu \to 0$ (singular) | 5.1 (the maximum) |
+
+`cartesian_planner.py` uses the same formula for straight lines. The separate `check_singularity(q)` function returns `True` when either $\mu \le 10^{-6}$ or the analytical conditions from Section 3.6.9 report a singular pose.
+
+#### 3.6.6 Damped least-squares inverse: `inverse_jacobian(q, damping)`
+
+```python
+def inverse_jacobian(q, damping=1.0):
+    if damping <= 0.0:
+        raise ValueError("Damping must be positive")
+
+    j = jacobian(q)
+    jt = _transpose(j)
+
+    normal = _matrix_multiply(jt, j)          # J^T J
+
+    for i in range(3):
+        normal[i][i] += damping ** 2          # + lambda^2 I
+
+    return _matrix_multiply(_inverse_3x3(normal), jt)   # (J^T J + lambda^2 I)^-1 J^T
+```
+
+| Equation (Section 3.4) | Code |
+|---|---|
+| $J^T$ | `jt = _transpose(j)` |
+| $J^TJ$ | `normal = _matrix_multiply(jt, j)` |
+| $J^TJ + \lambda^2 I$ | `normal[i][i] += damping ** 2` |
+| $(J^TJ + \lambda^2 I)^{-1}J^T$ | `_matrix_multiply(_inverse_3x3(normal), jt)` |
+
+Three small helper functions replace NumPy:
+
+- `_transpose(matrix)` swaps rows and columns.
+- `_matrix_multiply(a, b)` is a triple-loop matrix product.
+- `_inverse_3x3(matrix)` is Gauss-Jordan elimination with partial pivoting on a $3\times6$ augmented matrix. It raises `ValueError("Matrix is singular")` if a pivot falls below `1e-15`.
+
+Adding $\lambda^2$ to the diagonal makes $J^TJ + \lambda^2I$ positive definite for any $\lambda > 0$, so the inversion stays well-conditioned even when $J$ itself is singular. That is why `damping <= 0` is rejected.
+
+**Worked example.** At the zero pose with $\lambda = 0.1$, commanding a tip velocity of $(0, 10, 0)$ mm/s gives joint velocities of about $(0.02646, 0, 0)$ rad/s. Only the base rotates, which is correct because the first Jacobian column is $(0, 378, 0)$ and $10/378 = 0.02646$.
+
+#### 3.6.7 How the planners call these functions
+
+The core loop is `_plan_path()` in [`shape_planner.py`](scripts/motion_planning/shape_planner.py). For every 50 Hz sample it runs this chain:
+
+```python
+# 1. Quintic progress along the path (Step 7)
+blend      = 10*u**3 - 15*u**4 + 6*u**5
+blend_rate = (30*u**2 - 60*u**3 + 30*u**4) / duration
+
+distance        = total_length * blend
+cartesian_speed = total_length * blend_rate
+
+# 2. Position and unit tangent on the current segment (line or arc)
+position, tangent = evaluate(remaining)
+velocity = tuple(v * cartesian_speed for v in tangent)      # TCP velocity (mm/s)
+
+# 3. Inverse kinematics -> joint angles
+q = inverse_kinematics(*position, elbow=elbow, enforce_limits=True)
+
+# 4. Singularity measure -> adaptive damping
+measure = singularity_measure(q)
+damping = 0.1 + 5.0 * max(0.0, 1.0 - measure / 0.1)
+
+# 5. Damped inverse Jacobian -> joint velocities (rad/s)
+inverse = inverse_jacobian(q, damping=damping)
+qdot = tuple(sum(inverse[row][col] * velocity[col] for col in range(3))
+             for row in range(3))
+```
+
+Each sample is stored as `(t, position, q, qdot, damping, measure)`. Position and velocity therefore come from two different routes: joint **positions** come from exact analytical IK, while joint **velocities** come from the damped Jacobian. The line planners in `cartesian_planner.py` follow the same IK, damping and DLS sequence.
+
+#### 3.6.8 Joint mapping and TCP tracking error
+
+The math functions use $q = [q_1, q_2, q_3]$, while the ROS 2 controller uses named joints. [`joint_mapping.py`](scripts/motion_planning/joint_mapping.py) converts between them with per-joint signs and offsets (currently all `+1` and `0`, so the two conventions match):
+
+```python
+def ros_to_math(q_ros):
+    return tuple((position - offset) / sign
+                 for position, sign, offset in zip(q_ros, JOINT_SIGNS, JOINT_OFFSETS))
+```
+
+Forward kinematics is then reused to measure tracking error in `feedback_callback()` of [`trajectory_publisher.py`](scripts/motion_planning/trajectory_publisher.py):
+
+```python
+desired_tcp = forward_kinematics(ros_to_math(desired))
+actual_tcp  = forward_kinematics(ros_to_math(actual))
+
+error = math.sqrt(sum((a - d) ** 2 for a, d in zip(actual_tcp, desired_tcp)))
+self.tracking_errors.append(error)
+```
+
+The error is the Euclidean distance between the TCP computed from the **desired** joint positions and the TCP computed from the **actual** joint positions reported by the controller. `report_tracking_accuracy()` then computes the RMS, maximum and final error:
+
+$$e_{\text{RMS}} = \sqrt{\frac{1}{N}\sum_{k=1}^{N} e_k^2}$$
+
+These are the numbers reported in Section 5.5. They measure tracking in simulation and are not used to correct the motion.
+
+#### 3.6.9 The analytical alternative (`analytical_*` functions)
+
+The file also contains an exact analytical derivation that uses a different angle convention:
+
+$$\theta_1 = q_1,\qquad \theta_2 = \Phi_{1,0} - q_2 - \tfrac{\pi}{2},\qquad \theta_3 = \Phi_{2,0} - \Phi_{1,0} - q_3$$
+
+| Function | Purpose |
+|---|---|
+| `analytical_joint_angles(q)` | Converts $q$ to $\theta$ using the equations above |
+| `analytical_forward_kinematics_transform(q)` | Returns the exact $4\times4$ homogeneous transform |
+| `analytical_full_jacobian(q)` | Returns the $6\times3$ geometric Jacobian (linear and angular rows) |
+| `analytical_linear_jacobian(q)` | Returns the top $3\times3$ linear part |
+| `analytical_jacobian_determinant(q)` | Returns $\det J_v = A\,L_2L_3\sin\theta_3$ |
+| `analytical_singularity_conditions(q)` | Reports whether $A = 0$ (arm over the base axis) or $\sin\theta_3 = 0$ (elbow fully stretched or folded) |
+| `analytical_inverse_jacobian(q)` | Exact inverse of $J_v$ (raises `ValueError` at a singularity) |
+| `analytical_inverse_joint_velocity(q, v)` | Applies the exact inverse and converts back with $\dot q_2 = -\dot\theta_2,\ \dot q_3 = -\dot\theta_3$ |
+
+Here $A = L_2\sin\theta_2 + L_3\sin(\theta_2+\theta_3)$ and $B = L_2\cos\theta_2 + L_3\cos(\theta_2+\theta_3)$, with `ANALYTICAL_L2 = L1` and `ANALYTICAL_L3 = L2`. The two singularity conditions are physically meaningful: the tip is on the base axis, or the arm is fully extended or folded.
+
+The exact inverse has $\sin\theta_3$ and $A$ in its denominators, so it fails at singular poses by design. The trajectory planners therefore use the damped `inverse_jacobian()` from Section 3.6.6, and the analytical functions serve as an independent mathematical check.
+
+#### 3.6.10 Function reference
+
+| Function | Input | Output | Math section | Used by |
+|---|---|---|---|---|
+| `forward_kinematics(q)` | $q$ (rad) | $(x,y,z)$ (mm) | 3.1 | `trajectory_publisher.py` (start pose, tracking error) |
+| `inverse_kinematics(x,y,z,elbow,enforce_limits)` | $(x,y,z)$ | $q$ (rad) | 3.2 | `cartesian_planner.py`, `shape_planner.py` |
+| `jacobian(q)` | $q$ | $3\times3$ matrix | 3.3 | `singularity_measure`, `inverse_jacobian` |
+| `singularity_measure(q)` | $q$ | $\mu \in [0,1]$ | 3.4 | `cartesian_planner.py`, `shape_planner.py` |
+| `check_singularity(q)` | $q$ | `True`/`False` | 3.4, 3.6.9 | Standalone check (not called by the planners) |
+| `inverse_jacobian(q, damping)` | $q$, $\lambda$ | $3\times3$ DLS inverse | 3.4 | `cartesian_planner.py`, `shape_planner.py` |
+| `check_joint_limits(q)` | $q$ | `True`/`False` | 2.2 | `inverse_kinematics`, `shape_planner.py`, `trajectory_publisher.py` |
+
+---
 
 ## 4. Cartesian Shape Tracing: Square and Circle
 
@@ -846,6 +1157,148 @@ To clean up trail dots from previous runs:
 ```bash
 cd ~/robot_arm_ws
 python3 src/robot_arm_description/scripts/common/clear_marks.py
+```
+
+---
+
+## 8. ROS 2 Controllers and Control Stack Used
+
+This section lists every ROS 2 controller and control component the project uses, what each one does, and how it is configured. The configuration comes from [`config/controllers.yaml`](config/controllers.yaml), [`launch/gazebo.launch.py`](launch/gazebo.launch.py) and [`urdf/robot_arm_gz.urdf`](urdf/robot_arm_gz.urdf). Everything runs in **Gazebo Classic simulation** on ROS 2 Humble; no real hardware driver is used.
+
+### 8.1 Components and What Each One Does
+
+| Component | Type / plugin | Defined in | What it does in this project |
+|---|---|---|---|
+| **Controller manager** | `controller_manager` (ros2_control) | [`controllers.yaml`](config/controllers.yaml) | Loads and runs the controllers inside the control loop at 100 Hz. Each controller is started with a `spawner` node. |
+| **`joint_state_broadcaster`** | `joint_state_broadcaster/JointStateBroadcaster` | [`controllers.yaml`](config/controllers.yaml) | Reads the joint positions and velocities from the hardware interface and publishes them on `/joint_states`. The trajectory publisher uses this topic for the start pose and for TCP tracking-error measurement. |
+| **`arm_controller`** | `joint_trajectory_controller/JointTrajectoryController` | [`controllers.yaml`](config/controllers.yaml) | The only controller that moves the arm. It hosts the `FollowJointTrajectory` action server, receives the planned waypoints, interpolates between them in time, and sends position commands to the three joints. |
+| **`GazeboSystem`** | `gazebo_ros2_control/GazeboSystem` | `<ros2_control>` block in [`robot_arm_gz.urdf`](urdf/robot_arm_gz.urdf) | The simulated hardware interface. It exposes each joint's command and state interfaces to ros2_control and connects them to the Gazebo physics joints. |
+| **Gazebo plugin** | `libgazebo_ros2_control.so` | `<gazebo>` block in [`robot_arm_gz.urdf`](urdf/robot_arm_gz.urdf) | Starts the controller manager inside Gazebo and loads the parameters from `controllers.yaml`. |
+| **`robot_state_publisher`** | `robot_state_publisher` | [`gazebo.launch.py`](launch/gazebo.launch.py) | Publishes the URDF on `/robot_description` and the link transforms, with `use_sim_time: True`. |
+| **`spawn_entity.py`** | `gazebo_ros` | [`gazebo.launch.py`](launch/gazebo.launch.py) | Spawns the robot into Gazebo (entity name `robot_arm`) from the `robot_description` topic. |
+| **Action client** | `FollowJointTrajectory` client | [`trajectory_publisher.py`](scripts/motion_planning/trajectory_publisher.py) | Sends the planned trajectory to `/arm_controller/follow_joint_trajectory` and receives feedback while the arm moves. |
+
+Only two controllers are used: `joint_state_broadcaster` (read-only, publishes state) and `arm_controller` (commands motion). No velocity, effort or Cartesian controller is used; Cartesian motion is produced by the planner (Sections 3 and 4) and executed as joint positions.
+
+### 8.2 Controller Configuration (`config/controllers.yaml`)
+
+```yaml
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+arm_controller:
+  ros__parameters:
+    joints:
+      - joint_base_rotate
+      - joint_shoulder
+      - joint_elbow
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    state_publish_rate: 50.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+```
+
+| Parameter | Value | What it means |
+|---|---|---|
+| `update_rate` | `100` Hz | How often the controller manager runs the control loop |
+| `use_sim_time` | `true` | Uses the Gazebo simulation clock instead of the wall clock |
+| `joints` | `joint_base_rotate`, `joint_shoulder`, `joint_elbow` | The three joints controlled by `arm_controller`, in this order (matches [`joint_mapping.py`](scripts/motion_planning/joint_mapping.py)) |
+| `command_interfaces` | `position` | The controller sends position targets only (no velocity or effort commands) |
+| `state_interfaces` | `position`, `velocity` | The controller reads joint position and velocity as feedback |
+| `state_publish_rate` | `50.0` Hz | How often the controller publishes its state |
+| `action_monitor_rate` | `20.0` Hz | How often the action server monitors an executing goal |
+| `allow_partial_joints_goal` | `false` | A goal must include all three joints; goals with only some joints are rejected |
+
+### 8.3 Hardware Interface in the URDF
+
+The simulated hardware is declared in `robot_arm_gz.urdf`. Each of the three joints exposes one command interface and two state interfaces, matching `controllers.yaml`:
+
+```xml
+<ros2_control name="GazeboSystem" type="system">
+  <hardware>
+    <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+  </hardware>
+  <joint name="joint_base_rotate">
+    <command_interface name="position"/>
+    <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+    <state_interface name="velocity"/>
+  </joint>
+  <!-- joint_shoulder and joint_elbow are declared identically -->
+</ros2_control>
+
+<gazebo>
+  <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+    <parameters>/home/pavan/robot_arm_ws/src/robot_arm_description/config/controllers.yaml</parameters>
+  </plugin>
+</gazebo>
+```
+
+| Item | Value | Meaning |
+|---|---|---|
+| Initial joint position | `0.0` rad for all three joints | The arm starts at the zero pose, the TCP at (378, 0, 293) mm |
+| URDF joint limits | position $\pm3.14$ / $\pm1.57$ / $\pm1.57$ rad, velocity 2.0 rad/s, effort 10.0 | Hard limits declared per joint (see Section 2.2) |
+| Acceleration limit (4.0 rad/s²) | Not in the URDF | A software planning limit checked by the trajectory publisher, not a controller setting |
+
+> **Portability note:** the `<parameters>` path above is an absolute path (`/home/pavan/...`), written by `make_gz_urdf.py`. If the repository is cloned to a different location or user account, update this path (or regenerate the URDF) or the controllers will not load their parameters.
+
+### 8.4 Topics and Actions
+
+| Name | Type | Published / served by | Used by | Purpose |
+|---|---|---|---|---|
+| `/arm_controller/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | `arm_controller` (action server) | `trajectory_publisher.py` (action client) | Sends a planned trajectory and returns accept/result status and feedback (desired vs actual joint positions) |
+| `/joint_states` | `sensor_msgs/JointState` | `joint_state_broadcaster` | `trajectory_publisher.py` | Start pose, tracking-error measurement and the actual-trail recording |
+| `/robot_description` | `std_msgs/String` | `robot_state_publisher` | `spawn_entity.py` | Supplies the URDF used to spawn the robot |
+
+### 8.5 Startup Order
+
+[`gazebo.launch.py`](launch/gazebo.launch.py) starts the pieces in a fixed order using `OnProcessExit` event handlers, so each controller is spawned only after the step it depends on has finished:
+
+| Step | Action | Starts after |
+|---|---|---|
+| 1 | Gazebo launches with `worlds/white.world` | Launch start |
+| 2 | `robot_state_publisher` starts | Launch start |
+| 3 | `spawn_entity.py` spawns `robot_arm` into Gazebo | Launch start |
+| 4 | `joint_state_broadcaster` spawner runs | `spawn_entity.py` has exited |
+| 5 | `arm_controller` spawner runs | The `joint_state_broadcaster` spawner has exited |
+
+When both controllers are active, the arm is ready to accept trajectories.
+
+### 8.6 Control Data Flow
+
+```mermaid
+flowchart LR
+    P["Planner<br/>(IK + DLS, 50 Hz)"] --> TP["trajectory_publisher.py<br/>(action client)"]
+    TP -->|"FollowJointTrajectory goal"| AC["arm_controller<br/>(JointTrajectoryController)"]
+    AC -->|"position commands"| GS["GazeboSystem<br/>(hardware interface)"]
+    GS --> J["Gazebo joints<br/>(3 DOF arm)"]
+    J -->|"joint position / velocity"| GS
+    GS --> JSB["joint_state_broadcaster"]
+    JSB -->|"/joint_states"| TP
+    AC -->|"action feedback<br/>(desired vs actual)"| TP
+    TP --> FK["Forward kinematics<br/>TCP tracking error"]
+```
+
+The loop is **open-loop in Cartesian space**: the planner computes the whole trajectory first, `arm_controller` tracks the joint positions, and the feedback is used only to measure TCP tracking error with forward kinematics (Section 3.6.8). It is not used to correct the path.
+
+### 8.7 Checking the Controllers While the Simulation Runs
+
+Run these in a second terminal after `./run/start_gazebo.sh` (source the workspace first):
+
+```bash
+ros2 control list_controllers          # both controllers should show "active"
+ros2 control list_hardware_interfaces  # 3 joints, position command + position/velocity state
+ros2 action list                       # shows /arm_controller/follow_joint_trajectory
+ros2 topic echo /joint_states --once   # one joint-state message
 ```
 
 ---
