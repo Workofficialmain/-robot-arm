@@ -161,9 +161,22 @@ def singularity_measure(q):
     return abs(determinant) / (norms[0] * norms[1] * norms[2])
 
 
-def check_singularity(q, tolerance=1e-6):
-    """Return True when the linear Jacobian is singular or nearly singular."""
-    return singularity_measure(q) <= tolerance
+def check_singularity(
+    q,
+    tolerance=1e-6,
+    position_tolerance_mm=1e-3,
+    angular_tolerance=1e-6,
+):
+    """Return True for singular or near-singular configurations."""
+    conditions = analytical_singularity_conditions(
+        q,
+        position_tolerance_mm=position_tolerance_mm,
+        angular_tolerance=angular_tolerance,
+    )
+    return (
+        singularity_measure(q) <= tolerance
+        or conditions["singular"]
+    )
 
 
 def _transpose(matrix):
@@ -244,3 +257,159 @@ def inverse_jacobian(q, damping=1.0):
         normal[i][i] += damping ** 2
 
     return _matrix_multiply(_inverse_3x3(normal), jt)
+
+
+# ---------------------------------------------------------------------------
+# Analytical Jacobian from the supplied 3-DOF derivation.
+#
+# analytical convention:
+#   theta1 = q1
+#   theta2 = PHI1_0 - q2 - pi/2
+#   theta3 = PHI2_0 - PHI1_0 - q3
+#
+# analytical L2 = robot L1; analytical L3 = robot L2.
+# All translational quantities are in mm.
+# ---------------------------------------------------------------------------
+
+ANALYTICAL_L2 = L1
+ANALYTICAL_L3 = L2
+
+
+def analytical_joint_angles(q):
+    """Convert this robot's joint angles to the analytical's convention."""
+    q1, q2, q3 = q
+    theta1 = q1
+    theta2 = PHI1_0 - q2 - math.pi / 2.0
+    theta3 = PHI2_0 - PHI1_0 - q3
+    return theta1, theta2, theta3
+
+
+def _analytical_terms(q):
+    """Calculate A, B and the trigonometric terms in the supplied derivation."""
+    theta1, theta2, theta3 = analytical_joint_angles(q)
+    theta23 = theta2 + theta3
+
+    s1, c1 = math.sin(theta1), math.cos(theta1)
+    s2, c2 = math.sin(theta2), math.cos(theta2)
+    s23, c23 = math.sin(theta23), math.cos(theta23)
+    s3 = math.sin(theta3)
+
+    A = ANALYTICAL_L2 * s2 + ANALYTICAL_L3 * s23
+    B = ANALYTICAL_L2 * c2 + ANALYTICAL_L3 * c23
+
+    return theta1, theta2, theta3, A, B, s1, c1, s2, c2, s23, c23, s3
+
+
+def analytical_forward_kinematics_transform(q):
+    """Return the exact 4x4 homogeneous transform from the analytical."""
+    (_, theta2, theta3, A, B, s1, c1,
+     s2, c2, s23, c23, _) = _analytical_terms(q)
+
+    return [
+        [-c1 * s23, -c1 * c23, s1, -c1 * A],
+        [-s1 * s23, -s1 * c23, -c1, -s1 * A],
+        [c23, -s23, 0.0, SHOULDER[2] + B],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+
+
+def analytical_full_jacobian(q):
+    """Return the exact 6x3 geometric Jacobian shown in the analytical.
+
+    Its columns map theta_dot to [vx, vy, vz, wx, wy, wz].
+    """
+    (_, _, _, A, B, s1, c1,
+     _, _, s23, c23, _) = _analytical_terms(q)
+
+    a = ANALYTICAL_L3 * c23
+    b = ANALYTICAL_L3 * s23
+
+    return [
+        [s1 * A, -c1 * B, -c1 * a],
+        [-c1 * A, -s1 * B, -s1 * a],
+        [0.0, -A, -b],
+        [0.0, s1, s1],
+        [0.0, -c1, -c1],
+        [1.0, 0.0, 0.0],
+    ]
+
+
+def analytical_linear_jacobian(q):
+    """Return the top 3x3 translational part of the analytical Jacobian."""
+    return [row[:] for row in analytical_full_jacobian(q)[:3]]
+
+
+def analytical_jacobian_determinant(q):
+    """Return det(Jv) = A * L2 * L3 * sin(theta3)."""
+    (_, _, _, A, _, _, _, _, _, _, _, s3) = _analytical_terms(q)
+    return A * ANALYTICAL_L2 * ANALYTICAL_L3 * s3
+
+
+def analytical_singularity_conditions(
+    q,
+    position_tolerance_mm=1e-3,
+    angular_tolerance=1e-6,
+):
+    """Report base-axis and planar-elbow singularity conditions.
+
+    A is measured in millimetres; sin(theta3) is dimensionless.
+    Their tolerances must therefore be specified independently.
+    """
+    (_, _, _, A, _, _, _, _, _, _, _, s3) = _analytical_terms(q)
+    A_zero = abs(A) <= position_tolerance_mm
+    sin_theta3_zero = abs(s3) <= angular_tolerance
+    return {
+        "A_zero": A_zero,
+        "sin_theta3_zero": sin_theta3_zero,
+        "singular": A_zero or sin_theta3_zero,
+    }
+
+
+def analytical_inverse_jacobian(q, tolerance=1e-12):
+    """Return the exact analytical Jv inverse from analytical Step 8.
+
+    Maps [vx, vy, vz] to [theta1_dot, theta2_dot, theta3_dot].
+    Raises ValueError at a singular or nearly singular configuration.
+    """
+    (_, _, _, A, B, s1, c1,
+     _, _, s23, c23, s3) = _analytical_terms(q)
+
+    denominator = ANALYTICAL_L2 * ANALYTICAL_L3 * s3
+
+    if abs(A) <= tolerance or abs(denominator) <= tolerance:
+        raise ValueError(
+            "Analytical inverse Jacobian is singular at this configuration"
+        )
+
+    return [
+        [s1 / A, -c1 / A, 0.0],
+        [
+            -c1 * s23 / (ANALYTICAL_L2 * s3),
+            -s1 * s23 / (ANALYTICAL_L2 * s3),
+            c23 / (ANALYTICAL_L2 * s3),
+        ],
+        [
+            c1 * A / denominator,
+            s1 * A / denominator,
+            -B / denominator,
+        ],
+    ]
+
+
+def analytical_inverse_joint_velocity(q, cartesian_velocity):
+    """Map Cartesian velocity to this robot's q_dot using the exact inverse.
+
+    The analytical inverse returns theta_dot. This function converts it to
+    the robot's q_dot convention, where q2_dot=-theta2_dot and
+    q3_dot=-theta3_dot.
+    """
+    if len(cartesian_velocity) != 3:
+        raise ValueError("Cartesian velocity must contain vx, vy, vz")
+
+    inverse = analytical_inverse_jacobian(q)
+    theta_dot = [
+        sum(inverse[i][j] * cartesian_velocity[j] for j in range(3))
+        for i in range(3)
+    ]
+
+    return theta_dot[0], -theta_dot[1], -theta_dot[2]

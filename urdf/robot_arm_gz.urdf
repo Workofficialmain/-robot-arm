@@ -291,4 +291,9 @@
     </plugin>
   </gazebo>
 
+  <gazebo reference="robot_base"><material>Gazebo/Orange</material></gazebo>
+  <gazebo reference="link_turntable"><material>Gazebo/Orange</material></gazebo>
+  <gazebo reference="link_upper_arm"><material>Gazebo/Orange</material></gazebo>
+  <gazebo reference="link_forearm"><material>Gazebo/Orange</material></gazebo>
+  <gazebo reference="end_effector"><material>Gazebo/Orange</material></gazebo>
 </robot>
